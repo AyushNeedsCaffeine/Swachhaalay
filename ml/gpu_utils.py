@@ -6,6 +6,8 @@ falling back to CPU (scikit-learn/pandas/NumPy) automatically.
 """
 
 import warnings
+import numpy as np
+import pandas as pd
 
 GPU_AVAILABLE = False
 _CUML_IMPORT_ERROR = None
@@ -18,8 +20,6 @@ try:
     warnings.filterwarnings("ignore", category=UserWarning, module="cuml")
 except ImportError as e:
     _CUML_IMPORT_ERROR = str(e)
-    import numpy as cp  # fallback: NumPy acts as cupy
-    import pandas as pd
 
 
 def is_gpu_available() -> bool:
@@ -44,25 +44,27 @@ def get_device_info() -> str:
 
 
 def load_data(filepath: str):
-    """
-    Load CSV data into a DataFrame.
-    Uses cuDF on GPU, pandas on CPU.
-    Returns a pandas-compatible DataFrame (cuDF DataFrame is pandas-compatible).
-    """
-    if GPU_AVAILABLE:
-        df = cudf.read_csv(filepath)
-        print(f"[GPU] Loaded {len(df):,} rows into cuDF DataFrame")
-    else:
-        df = pd.read_csv(filepath)
-        print(f"[CPU] Loaded {len(df):,} rows into pandas DataFrame")
+    """Load CSV data into a pandas DataFrame."""
+    df = pd.read_csv(filepath, parse_dates=["timestamp"])
+    print(f"Loaded {len(df):,} rows into pandas DataFrame")
     return df
 
 
 def to_numpy(df_or_series):
-    """Convert cuDF/pandas object to NumPy array."""
+    """Convert DataFrame/Series to NumPy array."""
+    if hasattr(df_or_series, 'values'):
+        vals = df_or_series.values
+        return vals.get() if hasattr(vals, 'get') else vals  # cupy -> numpy
+    if hasattr(df_or_series, 'to_numpy'):
+        return df_or_series.to_numpy()
+    return np.asarray(df_or_series)
+
+
+def to_cudf(df: pd.DataFrame):
+    """Convert pandas DataFrame to cuDF (for GPU model training)."""
     if GPU_AVAILABLE:
-        return cp.asnumpy(df_or_series.values) if hasattr(df_or_series, 'values') else cp.asnumpy(df_or_series)
-    return df_or_series.values if hasattr(df_or_series, 'values') else df_or_series
+        return cudf.from_pandas(df)
+    return df
 
 
 def train_test_split_time(df, time_col="timestamp", train_ratio=0.69):
@@ -71,12 +73,11 @@ def train_test_split_time(df, time_col="timestamp", train_ratio=0.69):
     First `train_ratio` fraction of time range = train, rest = test.
     This prevents data leakage from adjacent 5-minute readings.
     """
-    if GPU_AVAILABLE:
-        df_pd = df.to_pandas()
-    else:
-        df_pd = df.copy() if hasattr(df, 'copy') else df
+    df_pd = df.copy()
 
-    df_pd[time_col] = pd.to_datetime(df_pd[time_col])
+    if not pd.api.types.is_datetime64_any_dtype(df_pd[time_col]):
+        df_pd[time_col] = pd.to_datetime(df_pd[time_col])
+
     t_min = df_pd[time_col].min()
     t_max = df_pd[time_col].max()
     t_split = t_min + (t_max - t_min) * train_ratio
@@ -84,12 +85,8 @@ def train_test_split_time(df, time_col="timestamp", train_ratio=0.69):
     train_mask = df_pd[time_col] <= t_split
     test_mask = df_pd[time_col] > t_split
 
-    if GPU_AVAILABLE:
-        train_df = cudf.from_pandas(df_pd[train_mask])
-        test_df = cudf.from_pandas(df_pd[test_mask])
-    else:
-        train_df = df_pd[train_mask]
-        test_df = df_pd[test_mask]
+    train_df = df_pd[train_mask].reset_index(drop=True)
+    test_df = df_pd[test_mask].reset_index(drop=True)
 
     print(f"Time-based split at {t_split}: train={len(train_df):,}, test={len(test_df):,}")
     return train_df, test_df
