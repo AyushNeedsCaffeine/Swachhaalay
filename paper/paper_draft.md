@@ -1,4 +1,4 @@
-# Smart Washroom: IoT-Based Hygiene Monitoring and Automatic Disinfection System with Virtual Sensing of Consumable Levels
+# Swachhaalay: IoT-Based Hygiene Monitoring and Automatic Disinfection System with Virtual Sensing of Consumable Levels
 
 ## Abstract
 
