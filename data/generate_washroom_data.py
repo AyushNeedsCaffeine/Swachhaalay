@@ -171,7 +171,7 @@ def generate_cubicle_data(cubicle_id, peak_prob, regular_prob, night_prob, num_d
             'water_level_cm': water_level_cm,
             'disinfectant_level_virtual_pct': disinfectant_pct,
             'mist_maker_status': mist_maker_status,
-            'needs_manual_checkup': needs_manual_checkup,
+            'needs_manual_checkup': int(needs_manual_checkup or checkup_flag),
             'water_refill_status': water_refill_status,
             'disinfectant_refill_status': disinfectant_refill_status,
             'refill_motor_status': refill_motor_status,
@@ -180,7 +180,6 @@ def generate_cubicle_data(cubicle_id, peak_prob, regular_prob, night_prob, num_d
             'hours_since_deep_clean': round(hours_since_deep_clean, 2),
             'hygiene_score': hygiene_score,
             'needs_cleaning': needs_cleaning,
-            'needs_manual_checkup': checkup_flag
         })
 
     return rows

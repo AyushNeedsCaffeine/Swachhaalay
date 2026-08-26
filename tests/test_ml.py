@@ -26,7 +26,7 @@ class TestDataLoading:
 
     def test_csv_shape(self):
         df = pd.read_csv(DATA_PATH, parse_dates=["timestamp"])
-        assert df.shape[0] == 100224, f"Expected 100224 rows, got {df.shape[0]}"
+        assert df.shape[0] == 25056 * 4, f"Expected 100224 rows (25056 per cubicle x 4), got {df.shape[0]}"
         assert df.shape[1] == 17, f"Expected 17 columns, got {df.shape[1]}"
 
     def test_no_nulls(self):

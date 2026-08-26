@@ -135,14 +135,14 @@ def evaluate_clustering(models_dir: str = "ml/models", output_dir: str = "output
     return meta
 
 
-def generate_comparison_table(output_dir: str = "outputs/figures"):
+def generate_comparison_table(models_dir: str = "ml/models", output_dir: str = "outputs/figures"):
     """Generate a summary comparison table for the paper."""
     os.makedirs(output_dir, exist_ok=True)
 
     try:
-        anomaly_meta = joblib.load("ml/models/anomaly_detection_meta.joblib")
-        virtual_meta = joblib.load("ml/models/virtual_sensing_meta.joblib")
-        clustering_meta = joblib.load("ml/models/usage_clustering_meta.joblib")
+        anomaly_meta = joblib.load(os.path.join(models_dir, "anomaly_detection_meta.joblib"))
+        virtual_meta = joblib.load(os.path.join(models_dir, "virtual_sensing_meta.joblib"))
+        clustering_meta = joblib.load(os.path.join(models_dir, "usage_clustering_meta.joblib"))
     except FileNotFoundError as e:
         print(f"Missing model metadata: {e}")
         return
@@ -189,7 +189,7 @@ def main():
     evaluate_anomaly_detection()
     evaluate_virtual_sensing()
     evaluate_clustering()
-    generate_comparison_table()
+    generate_comparison_table(models_dir="ml/models")
 
     print("\n" + "=" * 60)
     print("EVALUATION COMPLETE")

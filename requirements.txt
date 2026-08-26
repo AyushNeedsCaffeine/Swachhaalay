@@ -15,11 +15,5 @@ seaborn>=0.12.0
 # pip install cuml-cu12 cudf-cu12 cupy-cuda12x
 # Falls back to scikit-learn/pandas if not installed.
 
-# Optional: Gradient Boosting
-xgboost>=2.0.0
-lightgbm>=4.1.0
-
 # Utilities
-pyyaml>=6.0
 tqdm>=4.65.0
-python-dotenv>=1.0.0

@@ -13,6 +13,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+from ml.gpu_utils import GPU_AVAILABLE
 from dashboard.utils import load_dataset, load_metadata, get_today_data
 
 MODELS_DIR = "ml/models"
@@ -39,7 +40,8 @@ def render():
             latest = df[df["cubicle_id"] == selected].iloc[-1]
             current_level = latest["disinfectant_level_virtual_pct"]
             spray_rate = today["mist_maker_status"].sum() if not today.empty else 0
-            avg_spray_per_hour = spray_rate / 24 if spray_rate > 0 else 0.5
+            hours_of_data = len(today) * 5 / 60 if not today.empty else 24
+            avg_spray_per_hour = spray_rate / hours_of_data if spray_rate > 0 and hours_of_data > 0 else 0.5
 
             if avg_spray_per_hour > 0:
                 hours_remaining = (current_level - 15) / (avg_spray_per_hour * 0.25)
@@ -70,7 +72,8 @@ def render():
 
             c1, c2, c3 = st.columns(3)
             with c1:
-                st.metric("Model", "Isolation Forest (GPU)")
+                device_label = "GPU" if GPU_AVAILABLE else "CPU"
+                st.metric("Model", f"Isolation Forest ({device_label})")
             with c2:
                 n_anomalies = ad_preds["anomaly_label"].sum()
                 st.metric("Anomalies Detected", n_anomalies)
@@ -123,8 +126,10 @@ def render():
     # === Sensor Agreement Panel ===
     st.subheader("Sensor Agreement (LD2410 vs IR)")
     sub_df = df[df["cubicle_id"] == selected]
-    disagree = ((sub_df["occupancy_ld2410"] == 1) & (sub_df["motion_ir"] == 0) |
-                (sub_df["occupancy_ld2410"] == 0) & (sub_df["motion_ir"] == 1))
+    disagree = (
+        ((sub_df["occupancy_ld2410"] == 1) & (sub_df["motion_ir"] == 0)) |
+        ((sub_df["occupancy_ld2410"] == 0) & (sub_df["motion_ir"] == 1))
+    )
 
     n_disagree = disagree.sum()
     n_total = len(sub_df[sub_df["occupancy_ld2410"] == 1])

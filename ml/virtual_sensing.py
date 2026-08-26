@@ -75,9 +75,6 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
         df.loc[mask, "prev_disinfectant_level"] = sub["disinfectant_level_virtual_pct"].shift(1)
         df.loc[mask, "prev_disinfectant_level"] = df.loc[mask, "prev_disinfectant_level"].ffill().fillna(100.0)
 
-        # Change in disinfectant level (lagged)
-        df.loc[mask, "disinfectant_level_diff"] = sub["disinfectant_level_virtual_pct"].diff().fillna(0)
-
     feature_cols = [
         "prev_disinfectant_level",
         "sprays_since_refill",
@@ -168,6 +165,7 @@ def train_virtual_sensing(csv_path: str, output_dir: str = "ml/models"):
     # Train primary models
     models = build_models()
     results = {}
+    all_preds = {}
 
     for name, model in models.items():
         print(f"\nTraining {name}...")
@@ -181,6 +179,7 @@ def train_virtual_sensing(csv_path: str, output_dir: str = "ml/models"):
             model.fit(X_train_np, y_train_np)
             y_pred = model.predict(X_test_np)
         results[name] = evaluate(y_test_np, y_pred, name)
+        all_preds[name] = y_pred.copy()
 
     # Naive baseline
     print("\nNaive baseline...")
@@ -207,9 +206,10 @@ def train_virtual_sensing(csv_path: str, output_dir: str = "ml/models"):
     }
     joblib.dump(metadata, os.path.join(output_dir, "virtual_sensing_meta.joblib"))
 
-    # Save predictions for dashboard
+    # Save predictions for dashboard (use best model's predictions, not last trained)
+    best_preds = all_preds[best_name]
     preds_df = test_df[["timestamp", "cubicle_id", TARGET]].copy()
-    preds_df["predicted_level"] = y_pred
+    preds_df["predicted_level"] = best_preds
     preds_df["naive_baseline"] = y_baseline
     preds_df.to_csv(os.path.join(output_dir, "virtual_sensing_predictions.csv"), index=False)
 

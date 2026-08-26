@@ -65,7 +65,7 @@ def main():
     # 3. Usage Clustering
     if not args.skip_clustering:
         print("\n" + "=" * 40)
-        print("FEATURE 4: USAGE CLUSTERING")
+        print("FEATURE 3: USAGE CLUSTERING")
         print("=" * 40)
         t0 = time.time()
         from ml.usage_clustering import train_usage_clustering

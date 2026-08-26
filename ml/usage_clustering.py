@@ -107,7 +107,7 @@ def train_usage_clustering(csv_path: str, output_dir: str = "ml/models"):
     axes[1].grid(True, alpha=0.3)
 
     plt.tight_layout()
-    elbow_path = os.path.join(output_dir.replace("models", ".."), "outputs", "eda", "kmeans_elbow.png")
+    elbow_path = os.path.join(output_dir, "..", "outputs", "eda", "kmeans_elbow.png")
     os.makedirs(os.path.dirname(elbow_path), exist_ok=True)
     plt.savefig(elbow_path, dpi=150, bbox_inches="tight")
     plt.close()
@@ -131,7 +131,7 @@ def train_usage_clustering(csv_path: str, output_dir: str = "ml/models"):
     ax.grid(True, alpha=0.3)
     ax.set_xticks(hours)
     plt.tight_layout()
-    cluster_path = os.path.join(output_dir.replace("models", ".."), "outputs", "eda", "cluster_profiles.png")
+    cluster_path = os.path.join(output_dir, "..", "outputs", "eda", "cluster_profiles.png")
     plt.savefig(cluster_path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Saved: {cluster_path}")

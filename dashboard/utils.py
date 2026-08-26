@@ -14,7 +14,7 @@ DATA_PATH = "data/washroom_dataset_multi_cubicle.csv"
 MODELS_DIR = "ml/models"
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=3600)
 def load_dataset():
     """Load the washroom dataset (cached for performance)."""
     df = pd.read_csv(DATA_PATH, parse_dates=["timestamp"])
