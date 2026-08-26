@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data (large files - track with DVC or LFS if needed)
+data/*.csv
+data/*.parquet
+
+# Models (large files)
+ml/models/*.joblib
+ml/models/*.pkl
+ml/models/*.h5
+
+# Logs & outputs
+logs/
+*.log
+outputs/
+figures/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db

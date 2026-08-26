@@ -1,0 +1,25 @@
+# Smart Washroom - Core Dependencies
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+joblib>=1.3.0
+
+# Dashboard
+streamlit>=1.28.0
+plotly>=5.17.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# GPU-Accelerated ML (RTX 2050 / CUDA 13.1)
+# Install only if NVIDIA GPU + CUDA toolkit available:
+# pip install cuml-cu12 cudf-cu12 cupy-cuda12x
+# Falls back to scikit-learn/pandas if not installed.
+
+# Optional: Gradient Boosting
+xgboost>=2.0.0
+lightgbm>=4.1.0
+
+# Utilities
+pyyaml>=6.0
+tqdm>=4.65.0
+python-dotenv>=1.0.0
