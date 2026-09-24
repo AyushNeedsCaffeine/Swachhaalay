@@ -13,7 +13,7 @@
 |---|--------|------|-------|-------------|
 | 1 | `timestamp` | datetime | 2026-08-01 00:00:00 → 2026-10-26 23:55:00 | 5-minute-resolution reading |
 | 2 | `cubicle_id` | string | 4 values | Simulated cubicle identifier |
-| 3 | `mq135_gas_ppm` | float | 100.0 → ~350+ | Air quality / odor sensor (ammonia, smoke). Base ~110 ppm + noise + odor factor |
+| 3 | `mq135_gas_ppm` | float | 100.0 → ~420 | Air quality / odor sensor (ammonia, smoke). Base ~110 ppm + noise + odor factor |
 | 4 | `occupancy_ld2410` | int (0/1) | 0 or 1 | LD2410 mmWave presence sensor (catches stationary person) |
 | 5 | `motion_ir` | int (0/1) | 0 or 1 | PIR motion sensor. If occupied, fires with 70% probability (30% miss rate). Always 0 when unoccupied |
 | 6 | `water_level_cm` | float | 5.0 → 20.0 | Primary water tank level (HC-SR04 sensor). Refills to 20.0 when < 5.0 |
@@ -23,8 +23,8 @@
 | 10 | `water_refill_status` | int (0/1) | 0 or 1 | 1 = water refill pump active (automatic) |
 | 11 | `disinfectant_refill_status` | int (0/1) | 0 or 1 | 1 = disinfectant crossed low threshold (manual staff top-up) |
 | 12 | `refill_motor_status` | int (0/1) | 0 or 1 | 1 = any refill active (backward compat: water OR disinfectant) |
-| 13 | `entry_count` | int | 0 → ~30 | Cumulative visits today. Resets at midnight |
-| 14 | `hours_since_seat_spray` | float | 0.0 → ~4.1 | Hours since last mist spray. Increments 0.083/step (5 min) |
+| 13 | `entry_count` | int | 0 → ~50 | Cumulative visits today. Resets at midnight |
+| 14 | `hours_since_seat_spray` | float | 0.0 → ~9 | Hours since last mist spray. Increments 0.083/step (5 min). Long intervals occur when the gas-driven checkup state (extra_spray_streak ≥ 2) suppresses the 4-hour idle backstop |
 | 15 | `hours_since_deep_clean` | float | 0.0 → ~24.0 | Hours since 05:00 janitorial reset |
 | 16 | `hygiene_score` | float | 0.0 → 100.0 | Composite score: `100 - (gas×0.12) - (hrs_deep×1.8) - (entries×0.4) + N(0,8)` |
 | 17 | `needs_cleaning` | int (0/1) | 0 or 1 | **Target label**. Probabilistic: `P(clean) = 1 / (1 + exp((score - 45) / 6))` |

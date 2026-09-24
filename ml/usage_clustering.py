@@ -1,5 +1,5 @@
 """
-Smart Washroom — Usage Clustering (Feature 4)
+Smart Washroom — Usage Clustering (Feature 3)
 
 K-Means clustering on hourly traffic profiles to identify
 different usage patterns across cubicles.

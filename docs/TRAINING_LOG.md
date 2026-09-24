@@ -1,13 +1,13 @@
 # Training Log — Smart Washroom ML Pipeline
 
 ## Experiment 1: Anomaly Detection
-- **Date**: 2026-08-26 (unchanged re-run 2026-09-23)
+- **Date**: 2026-08-26 (re-run on new 18-column dataset: 2026-09-24)
 - **Model**: Isolation Forest (cuML GPU)
 - **Features**: 16 engineered (rolling stats, time encoding, gas dynamics)
 - **Contamination**: 5%
 - **n_estimators**: 200
 - **Train set**: 69,152 rows | **Test set**: 31,072 rows
-- **Result**: 5.02% anomaly rate on test set (matches contamination setting)
+- **Result**: 5.21% anomaly rate on test set (matches contamination setting)
 - **GPU training time**: 1.7s
 - **Notes**: cuML IsolationForest serialization warning — model needs re-fitting after unpickling. The dashboard only reads stored `anomaly_predictions.csv` + meta (it never calls `.predict()`), so the unpickling re-fit issue does not affect the running app. If live inference is added later, save the training data alongside the artifact and re-fit on load (or persist a CPU sklearn version).
 
@@ -53,8 +53,8 @@ The most important features (by permutation importance):
 ### Results
 | k | Inertia | Silhouette |
 |---|---------|------------|
-| 2 | 0.66 | 0.2085 |
-| 3 | 0.21 | 0.1255 |
+| 2 | 0.44 | 0.1914 |
+| 3 | 0.14 | 0.1336 |
 
 - **Selected k=2**: Cubicle B isolated from A/C/D
 - **GPU training time**: 2.3s
@@ -65,7 +65,7 @@ The most important features (by permutation importance):
 - **CUDA**: 13.1
 - **cuML**: 26.08
 - **Python**: 3.14.4
-- **Total training time**: 19.2s (all 3 models)
+- **Total training time**: anomaly ~1.7s + clustering ~2.3s; virtual sensing fit ~11s + honest walk-forward/rollout evaluation sweeps ~7 min (all 3 models)
 
 ## Next Steps
 - [ ] Validate on real sensor data from ESP32 prototype

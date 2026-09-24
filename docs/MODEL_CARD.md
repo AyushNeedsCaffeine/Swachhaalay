@@ -9,10 +9,10 @@
 | **Task** | Unsupervised anomaly detection on air quality signals |
 | **Input Features** | 16 engineered features from MQ135, occupancy, time |
 | **Output** | Binary label: 0=Normal, 1=Anomaly + anomaly score |
-| **Training Data** | 69,152 rows (first 69 days, 4 cubicles) |
-| **Test Data** | 31,072 rows (last 18 days) |
+| **Training Data** | 69,152 rows (≈60 days / 61 dates, Aug 1–Sep 30 — 69% of the 87-day span) |
+| **Test Data** | 31,072 rows (≈27 days / 27 dates, Sep 30–Oct 26 — last 31%) |
 | **Contamination** | 5% (expected anomaly rate) |
-| **Actual Anomaly Rate** | 5.02% on test set |
+| **Actual Anomaly Rate** | 5.21% on test set |
 | **n_estimators** | 200 |
 | **Training Time (GPU)** | ~1.7s |
 
@@ -33,8 +33,8 @@ Flags unusual air quality patterns (chemical spill, blocked drain, failing senso
 | **Task** | Regression: estimate disinfectant tank level from indirect signals |
 | **Target** | `disinfectant_level_virtual_pct` (0-100%) |
 | **Input Features** | 13 features from spray events, timing, usage history |
-| **Training Data** | 69,152 rows (first 69 days, 4 cubicles) |
-| **Test Data** | 31,072 rows (last 18 days) |
+| **Training Data** | 69,152 rows (≈60 days / 61 dates, Aug 1–Sep 30 — 69% of the 87-day span) |
+| **Test Data** | 31,072 rows (≈27 days / 27 dates, Sep 30–Oct 26 — last 31%) |
 | **n_estimators** | 200 |
 | **max_depth** | 15 |
 | **Training Time (GPU)** | ~11s |
@@ -74,7 +74,7 @@ The disinfectant tank has **no physical level sensor**. This model infers remain
 | **Task** | Unsupervised clustering of cubicle traffic profiles |
 | **Input** | 24-dimensional hourly occupancy rate vector per cubicle |
 | **Optimal k** | 2 (by silhouette score) |
-| **Silhouette Score** | 0.2085 |
+| **Silhouette Score** | 0.1914 |
 
 ### Cluster Assignments
 | Cubicle | Cluster | Profile |
@@ -96,7 +96,7 @@ Cubicle B (busy public station) forms its own cluster due to consistently high o
 3. **Static contamination**: Anomaly detection uses fixed 5% contamination; real deployment may need adaptive thresholds.
 4. **Multi-step virtual sensing is hard**: honest walk-forward/rollout R² is negative on synthetic data. In the field, observed refills (staff toggling a float/null switch on top-up) are required to re-seed per-segment prediction; the unfed-forward teacher-forced metric must never be quoted as expected performance.
 5. **Cooldown is simulation-only for now**: `room_available` enforces the post-spray 10-minute dry period in the data generator and dashboard, but the ESP32 firmware implementing the cooldown lockout timer is not yet in this repo.
-6. **Time-based split caveat**: Train/test split is time-based (days 1-60 vs 61-87), but distribution shift between periods is not explicitly modeled.
+6. **Time-based split caveat**: Train/test split is time-based (train ≈ days 1–61, test ≈ days 62–87), but distribution shift between periods is not explicitly modeled.
 
 ## Hardware Requirements
 

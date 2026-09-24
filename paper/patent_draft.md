@@ -27,7 +27,7 @@ The problem of monitoring consumable levels (disinfectant, soap, water) is typic
 <!-- [FIXED] Added: closer academic prior art was missing. A published system combining an IR
      occupancy counter, an ammonia gas sensor, and an ESP32 is a near-identical BOM to this
      invention's sensing suite and should be acknowledged and distinguished from, not omitted. -->
-It is also noted that IoT hygiene-monitoring systems combining a gas sensor, an occupancy/IR sensor, and an ESP32-class microcontroller have been described in academic literature (see companion paper draft, Section 2.1, reference to be finalized). The present invention differs from such systems specifically in (a) the dual-sensor occupancy safety gating described below, and (b) the virtual sensing method for a consumable with no dedicated physical sensor — neither of which is addressed by prior single-sensor or fully-instrumented designs.
+It is also noted that IoT hygiene-monitoring systems combining a gas sensor, an occupancy/IR sensor, and an ESP32-class microcontroller have been described in academic literature — notably Azman, Salleh & Zakaria, "IoT-based smart hygiene monitoring system," *IEEE Access*, vol. 10, pp. 118345–118356, 2022 (see also the companion paper draft, Section 2.1, reference [8]). The present invention differs from such systems specifically in (a) the dual-sensor occupancy safety gating described below, and (b) the virtual sensing method for a consumable with no dedicated physical sensor — neither of which is addressed by prior single-sensor or fully-instrumented designs.
 
 ---
 
@@ -69,7 +69,7 @@ The invention comprises a single enclosure containing:
 5. **Power**: 5V DC adapter
 6. **Connectivity**: Wi-Fi to cloud backend (Firebase or REST API)
 
-Total hardware cost: approximately ₹2,300–2,600 (~$28–31 USD).
+Total hardware cost: approximately ₹2,500–2,800 (~$30–34 USD).
 
 ### Control Logic — Safety-Critical Occupancy Gating
 
@@ -169,7 +169,7 @@ A method for safe automatic disinfection of a washroom, comprising:
 
 ## Abstract of Disclosure
 
-A low-cost, retrofit IoT system for automatic washroom disinfection and hygiene monitoring. The system mounts as a single unit inside an existing washroom without structural modification. Dual occupancy sensors (mmWave + IR) with OR-logic ensure the disinfectant spray never fires while the room is occupied. A trained regression model estimates the remaining disinfectant level from indirect signals (spray history, timing, air quality) without a dedicated physical level sensor, and that estimate drives real maintenance alerts. Validated to date on synthetic simulation data; field validation is ongoing. An anomaly detection model flags air quality irregularities. Total hardware cost: ~$30 USD.
+A low-cost, retrofit IoT system for automatic washroom disinfection and hygiene monitoring. The system mounts as a single unit inside an existing washroom without structural modification. Dual occupancy sensors (mmWave + IR) with OR-logic ensure the disinfectant spray never fires while the room is occupied. A trained regression model estimates the remaining disinfectant level from indirect signals (spray history, timing, air quality) without a dedicated physical level sensor, and that estimate drives real maintenance alerts. Validated to date on synthetic simulation data; field validation is ongoing. An anomaly detection model flags air quality irregularities. Total hardware cost: ~$30–34 USD.
 
 ---
 

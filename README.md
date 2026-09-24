@@ -22,7 +22,7 @@ Public washrooms in developing nations suffer from poor hygiene due to inadequat
 - Detects air quality anomalies (sensor drift, chemical spills, blocked ventilation)
 - Clusters usage patterns across multiple cubicle units for predictive maintenance
 
-The system installs as a **single box** inside an existing washroom with **no structural modification**. Estimated hardware cost: **₹2,300–2,600 (~$28–31 USD)**.
+The system installs as a **single box** inside an existing washroom with **no structural modification**. Estimated hardware cost: **₹2,500–2,800 (~$30–34 USD)**.
 
 ---
 
@@ -74,7 +74,7 @@ The system installs as a **single box** inside an existing washroom with **no st
 │  │  │   Anomaly    │ │   Virtual    │ │     Usage        │   │   │
 │  │  │  Detection   │ │   Sensing    │ │    Clustering    │   │   │
 │  │  │ Isolation    │ │ Random Forest│ │    K-Means       │   │   │
-│  │  │   Forest     │ │ + GBR        │ │                  │   │   │
+│  │  │   Forest     │ │ (GBR fallback)│ │                  │   │   │
 │  │  └──────────────┘ └──────────────┘ └──────────────────┘   │   │
 │  │                                                             │   │
 │  │  ┌──────────────────────────────────────────────────────┐  │   │
@@ -109,7 +109,7 @@ The system installs as a **single box** inside an existing washroom with **no st
 | **Language** | Python 3.10+ | ML pipeline, dashboard |
 | **ML Framework** | scikit-learn 1.3+ | Models (CPU fallback) |
 | **GPU Acceleration** | cuML 26.08 / cuDF / CuPy | Fast GPU training (NVIDIA) |
-| **Gradient Boosting** | scikit-learn GBR | Virtual sensing ensemble |
+| **Gradient Boosting** | scikit-learn GBR | Secondary candidate (CPU fallback builds it; Random Forest is the saved model) |
 | **Dashboard** | Streamlit 1.28+ | Web-based monitoring UI |
 | **Visualization** | Plotly 5.17+ / Matplotlib / Seaborn | Charts, heatmaps, gauges |
 | **Data Processing** | Pandas 2.0+ / NumPy 1.24+ | Data pipeline |
@@ -131,7 +131,7 @@ Detects unusual air quality patterns (chemical spills, sensor drift, blocked ven
 | **Implementation** | cuML (GPU) / scikit-learn (CPU) |
 | **Input Features** | 16 engineered (rolling stats, time encoding, gas dynamics) |
 | **Contamination** | 5% (expected anomaly rate) |
-| **Actual Anomaly Rate** | 5.02% on test set |
+| **Actual Anomaly Rate** | 5.21% on test set |
 | **Training Time (GPU)** | ~1.7s |
 
 ### Feature 2: Virtual Sensing (Core Contribution)
@@ -144,8 +144,8 @@ Estimates disinfectant tank level **without a physical sensor** using indirect s
 |--------|-------|
 | **Model** | Random Forest Regressor |
 | **Input Features** | 13 (prev level, spray rates, gas dynamics, time encoding) |
-| **Training Data** | 69,152 rows (first 69 days) |
-| **Test Data** | 31,072 rows (last 18 days) |
+| **Training Data** | 69,152 rows (≈60 days / 61 dates, Aug 1–Sep 30 — 69% of the 87-day span) |
+| **Test Data** | 31,072 rows (≈27 days / 27 dates, Sep 30–Oct 26 — last 31%) |
 | **Training Time (GPU)** | ~11s |
 
 | Evaluation | MAE (%) | RMSE (%) | R² |
@@ -167,7 +167,7 @@ Identifies traffic patterns across cubicle units for differentiated maintenance 
 | **Model** | K-Means |
 | **Input** | 24-dim hourly occupancy vector per cubicle |
 | **Optimal k** | 2 (by silhouette score) |
-| **Silhouette Score** | 0.2085 |
+| **Silhouette Score** | 0.1914 |
 | **Training Time (GPU)** | ~2.3s |
 
 **Result**: Cubicle B (busy public station) isolated from A/C/D — validates the pipeline's ability to distinguish fundamentally different traffic profiles.
@@ -257,7 +257,7 @@ Swachhaalay/
 ├── ml/
 │   ├── gpu_utils.py                 # GPU/CPU abstraction layer (cuML ↔ scikit-learn)
 │   ├── anomaly_detection.py         # Feature 1: Isolation Forest
-│   ├── virtual_sensing.py           # Feature 2: RF/GBR + naive baseline
+│   ├── virtual_sensing.py           # Feature 2: RF (GBR CPU fallback) + baselines
 │   ├── usage_clustering.py          # Feature 3: K-Means clustering
 │   ├── train.py                     # Unified training CLI
 │   ├── evaluate.py                  # Evaluation metrics & figures
@@ -320,13 +320,13 @@ python -m pytest tests/test_ml.py -v
 | LD2410 mmWave | 1 | 650 |
 | IR/PIR Sensor | 1 | 60 |
 | 4-Channel Relay | 1 | 180 |
-| 12V Pumps (×2) | 2 | — |
+| 12V Pumps (×2) | 2 | 200 |
 | Backup Reservoir + Tubing | 1 | 250 |
 | Mist Nozzle | 1 | 120 |
 | LED + Misc | 1 | 320 |
-| **Total** | | **₹2,300–2,600** |
+| **Total** | | **₹2,500–2,800** |
 
-**Estimated**: ~$28–31 USD
+**Estimated**: ~$30–34 USD
 
 ---
 
