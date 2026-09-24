@@ -59,7 +59,7 @@ def render():
 
     # === Occupancy Row ===
     st.subheader("Occupancy Detection")
-    occ_col, motion_col, combined_col = st.columns(3)
+    occ_col, motion_col, combined_col, avail_col = st.columns(4)
 
     with occ_col:
         ld2410 = int(latest.get("occupancy_ld2410", 0))
@@ -72,6 +72,13 @@ def render():
     with combined_col:
         combined = "Occupied" if (ld2410 or ir) else "Vacant"
         st.metric("Combined Status", combined)
+
+    with avail_col:
+        # Post-spray cooldown: room_available == 0 while the 10-min dry period runs
+        available = int(latest.get("room_available", 1))
+        label = "Available" if available else "Drying (10 min)"
+        st.metric("Room Availability", label,
+                  delta="Cooldown active — no entry/spray" if not available else None)
 
     # === Tank Visuals ===
     st.subheader("Tank Levels")

@@ -41,7 +41,12 @@ The key innovation is the virtual sensing approach: the disinfectant reservoir h
      ground truth came from "periodic manual measurement or a calibrated reference" — this did not
      happen. All current results are on a synthetic dataset. Filing with the original wording would
      misstate how the invention was validated. -->
-At the current stage of development, the system has been validated on a physics-informed **synthetic dataset** (100,224 rows, 4 simulated cubicles, 87 days at 5-minute resolution) rather than field-collected sensor logs. On this synthetic data, the model achieves R² = 0.996, MAE = 0.311%, against a naive counting-based baseline that performs far worse (see Detailed Description for important caveats on both numbers). Validation against real deployed sensors and human-judged ground truth is planned future work and should be completed, or the claims scoped to reflect simulation-only validation, before this application is finalized.
+<!-- [RESOLVED 2026-09-23] The R²=0.996/MAE=0.311 numbers below have been replaced. The previous
+     figures came from a teacher-forced evaluation that fed the model the TRUE previous level at
+     every test row (impossible in deployment) and from a naive baseline that never reset at refill.
+     The pipeline now reports honest walk-forward/rollout metrics and a refill-resetting naive + a
+     persistence baseline; the spec text reflects those corrected numbers. -->
+At the current stage of development, the system has been validated on a physics-informed **synthetic dataset** (100,224 rows, 4 simulated cubicles, 87 days at 5-minute resolution) rather than field-collected sensor logs. Under an honest walk-forward evaluation (the model consumes only its own recursive predictions, re-seeded at observed refill events) accuracy is MAE ~38.1% / R² ~ −2.40, which is comparable to a persistence baseline and better than the fixed naive baseline; a stricter refill-seeded rollout reaches MAE ~28.7%. One-step teacher-forced accuracy (MAE 0.30%, R² 0.9965) is explicitly **not** a deployed-performance claim. Validation against real deployed sensors and human-judged ground truth is planned future work and should be completed, or the claims scoped to reflect simulation-only validation, before this application is finalized.
 
 ---
 
@@ -73,32 +78,30 @@ The disinfection spray is controlled by a deterministic rule-based system, not b
 1. Reads both occupancy sensors (LD2410 and IR/PIR)
 2. Computes an OR-combination: if EITHER sensor indicates occupied, the room is treated as occupied
 3. When occupied: NO actuation of any pump under any circumstance
-4. On transition from occupied to vacant: initiates baseline spray
-5. Monitors gas levels post-spray; if gas remains high and extra-spray budget is available, initiates capped additional spray
-6. If extra-spray budget is exhausted, sets a `needs_manual_checkup` flag rather than continuing to spray
+4. After any spray, enforces a post-spray cooldown (~10 minutes) during which the room is reported unavailable (`room_available = 0`) and no fresh spray is permitted until the window elapses
+5. On transition from occupied to vacant: initiates baseline spray
+6. Monitors gas levels post-spray; if gas remains high and extra-spray budget is available, initiates capped additional spray
+7. If extra-spray budget is exhausted, sets a `needs_manual_checkup` flag rather than continuing to spray
 
-The two-spray cap prevents wasteful continuous spraying and instead flags the situation for human inspection, treating repeated ineffective spraying as a probable sensor or ventilation fault.
+The two-spray cap prevents wasteful continuous spraying and instead flags the situation for human inspection, treating repeated ineffective spraying as a probable sensor or ventilation fault. The cooldown lockout timer is currently implemented in the simulation and dashboard; the equivalent firmware timer on the ESP32 is pending.
 
 ### Virtual Sensing Method
 
 **a) Feature Engineering**: From the raw sensor stream, features are computed including a lagged version of the previously estimated disinfectant level, cumulative spray count since last refill, time since last spray event, rolling spray rates, air quality statistics, occupancy rate, and time-of-day encoding.
 
-<!-- [FIXED] Added an explicit caveat. Using the model's own prior estimate as an input feature is a
-     legitimate and standard time-series technique (as in Kalman filtering / autoregressive models),
-     but it must be evaluated with a genuine walk-forward protocol — where the model only ever sees
-     its OWN past predictions at inference time, never the true past value — or the reported accuracy
-     will not reflect real deployment, where the true previous level is never available either.
-     Confirm which protocol was used before relying on the R² figure below. -->
-**Important methodological note**: one of the engineered features is a lagged version of the model's own target (the previous estimated disinfectant level). This is a legitimate and common technique in state-estimation problems, but it is only valid if evaluation uses a true walk-forward protocol (the model recursively consumes its own prior predictions at test time). If, instead, the true historical value was used as this feature during evaluation, the reported accuracy would be inflated relative to real deployment, where the true value is never available. This should be explicitly confirmed and documented before the R² figure below is relied upon in any claim of technical effect.
+<!-- [RESOLVED 2026-09-23] The walk-forward protocol described as "should be confirmed" is now
+     implemented. `walk_forward_predict()` in the repo seeds each cubicle once at the test-window
+     boundary, feeds only the model's own previous predictions forward, and resets to 100.0 at
+     observed refill events; rollouts are also computed per refill segment. -->
+**Important methodological note**: one of the engineered features is a lagged version of the model's own target (the previous estimated disinfectant level). This is a legitimate and common technique in state-estimation problems, but it is **only valid when evaluation uses a true walk-forward protocol** (the model recursively consumes its own prior predictions at test time, with the state re-seeded at observed refill events). The implemented evaluation is such a protocol, and the resulting honest numbers are reported in Section 4.4.2 of the companion paper draft. The one-step teacher-forced result (R² 0.9965) is retained only as a pipeline sanity check and must not be cited as deployed performance.
 
 **b) Model**: A Random Forest regressor trained on historical data. At the current stage this is synthetic simulation data; the model is intended to be retrained on field data as it becomes available.
 
 **c) Actuator Control**: The predicted disinfectant level is compared against a low-level threshold. When the estimated level falls below the threshold, the system sets a `disinfectant_alert` flag transmitted to the cloud dashboard and sends a notification to maintenance staff. An automatic metered refill from a concentrate reservoir is noted as a possible future revision, not the current implementation.
 
-<!-- [FIXED] Added a caveat on the baseline. A "naive" comparison is only meaningful if the naive
-     method is itself reasonable — e.g., it must reset its running estimate at observed refill events,
-     the same way the real tank does. If it does not, the comparison overstates the model's advantage. -->
-**d) Evaluation**: On synthetic validation data, the model achieves R² = 0.996 and MAE = 0.311% on a held-out, time-based test split. A naive baseline (cumulative sprays × average volume per spray) performs far worse. This comparison is only informative if the naive baseline correctly resets at observed refill events, the same way the physical tank does — this should be confirmed in the baseline implementation before citing the improvement margin in any claim or publication.
+<!-- [RESOLVED 2026-09-23] Baseline now resets at refill (like the physical tank) and a persistence
+     baseline was added; the honest numbers from the corrected evaluation are given below. -->
+**d) Evaluation**: On synthetic validation data, under a true **walk-forward** protocol the model reaches MAE ≈ 38.1%, RMSE ≈ 45.6%, R² ≈ −2.40; a stricter rollout protocol re-seeded at observed refills reaches MAE ≈ 28.7%, R² ≈ −0.96. Both honest protocols are comparable to or better than the refill-reset naive baseline (MAE 42.5%) and the persistence baseline (MAE 38.3%). The teacher-forced one-step result (MAE 0.30%, R² 0.9965) is a pipeline sanity check only. These figures were produced by the corrected codebase; the previously reported 0.311/0.9957/185× figures are withdrawn.
 
 ### Anomaly Detection Method
 
@@ -172,8 +175,9 @@ A low-cost, retrofit IoT system for automatic washroom disinfection and hygiene 
 
 ## Reviewer Checklist Before Filing
 
-- [ ] Confirm virtual-sensing evaluation used true walk-forward validation (Section: Virtual Sensing Method, part a)
-- [ ] Confirm naive baseline resets at refill events before citing the improvement margin
+- [x] **RESOLVED**: Virtual-sensing evaluation uses true walk-forward validation (own predictions fed forward, re-seeded at observed refill events; strict per-refill rollouts also computed). Class-level numbers updated in spec.
+- [x] **RESOLVED**: Naive baseline now resets at refill events; persistence baseline added. The 0.311 / 0.9957 / 185× figures previously cited are withdrawn.
+- [ ] Confirm cooldown-lockout firmware timer is implemented on ESP32 before making the cooldown a claim (currently simulation + dashboard only)
 - [ ] Replace "Background" prior-art discussion with attorney-reviewed prior art search results (this draft's prior-art list is illustrative, not a substitute for a professional search)
 - [ ] Decide whether to file now on synthetic-data validation (with claims/spec scoped accordingly) or wait for field data
 - [ ] Have a registered patent agent review claim scope and language

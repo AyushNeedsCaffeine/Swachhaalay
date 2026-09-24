@@ -1,0 +1,13 @@
+Feature,Model,Metric,Value
+Virtual Sensing,RandomForest_LEAKY_reference_only,MAE,0.300
+Virtual Sensing,RandomForest_LEAKY_reference_only,R²,0.9965
+Virtual Sensing,RandomForest,MAE,38.084
+Virtual Sensing,RandomForest,R²,-2.3965
+Virtual Sensing,RandomForest_Rollout_between_refills,MAE,28.711
+Virtual Sensing,RandomForest_Rollout_between_refills,R²,-0.9559
+Virtual Sensing,NaiveBaseline_fixed,MAE,42.468
+Virtual Sensing,NaiveBaseline_fixed,R²,-2.9403
+Virtual Sensing,PersistenceBaseline,MAE,38.257
+Virtual Sensing,PersistenceBaseline,R²,-2.3649
+Anomaly Detection,IsolationForest,Anomaly Rate,5.21%
+Usage Clustering,K-Means (k=2),Silhouette,0.1914

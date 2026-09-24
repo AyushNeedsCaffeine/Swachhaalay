@@ -1,0 +1,6 @@
+,total_rows,needs_cleaning=0,needs_cleaning=1,positive_pct
+Cubicle_A_Office,25056.0,13456.0,11600.0,46.3
+Cubicle_B_Station,25056.0,12250.0,12806.0,51.11
+Cubicle_C_QuietFloor,25056.0,14838.0,10218.0,40.78
+Cubicle_D_LunchSpike,25056.0,14670.0,10386.0,41.45
+OVERALL,100224.0,55214.0,45010.0,44.91

@@ -79,10 +79,12 @@ def evaluate_virtual_sensing(models_dir: str = "ml/models", output_dir: str = "o
 
     # Model vs Naive comparison table
     results_df = pd.DataFrame(meta["results"]).T
+    if "per_cubicle" in results_df.columns:
+        results_df = results_df.drop(columns=["per_cubicle"])
     results_df.to_csv(os.path.join(output_dir, "virtual_sensing_results.csv"))
     print(f"\nResults table saved: {output_dir}/virtual_sensing_results.csv")
 
-    # Predicted vs Actual scatter plot
+    # Predicted vs Actual scatter plot (honest walk-forward predictions)
     fig, axes = plt.subplots(1, 4, figsize=(16, 4), sharey=True)
     for i, cubicle in enumerate(sorted(preds["cubicle_id"].unique())):
         sub = preds[preds["cubicle_id"] == cubicle]
@@ -98,18 +100,19 @@ def evaluate_virtual_sensing(models_dir: str = "ml/models", output_dir: str = "o
         ax.legend(fontsize=7)
         ax.set_xlim(lims)
         ax.set_ylim(lims)
-    plt.suptitle(f"Virtual Sensing — Predicted vs Actual ({meta['model_type']})", fontsize=12)
+    plt.suptitle(f"Virtual Sensing — Predicted vs Actual (walk-forward, {meta['model_type']})", fontsize=12)
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "virtual_sensing_scatter.png"), dpi=150, bbox_inches="tight")
     plt.close()
 
-    # Model vs Naive time series (first cubicle)
+    # Model vs Naive vs Persistence time series (first cubicle)
     first_cubicle = preds["cubicle_id"].unique()[0]
     sub = preds[preds["cubicle_id"] == first_cubicle].head(500)
     fig, ax = plt.subplots(figsize=(14, 5))
     ax.plot(range(len(sub)), sub["disinfectant_level_virtual_pct"], label="Actual", linewidth=1.5)
-    ax.plot(range(len(sub)), sub["predicted_level"], label=f"{meta['model_type']}", linewidth=1.5, alpha=0.8)
-    ax.plot(range(len(sub)), sub["naive_baseline"], label="Naive Baseline", linewidth=1.5, alpha=0.8, linestyle="--")
+    ax.plot(range(len(sub)), sub["predicted_level"], label=f"{meta['model_type']} (walk-forward)", linewidth=1.5, alpha=0.8)
+    ax.plot(range(len(sub)), sub["naive_baseline_fixed"], label="Naive Baseline (fixed)", linewidth=1.5, alpha=0.8, linestyle="--")
+    ax.plot(range(len(sub)), sub["persistence_baseline"], label="Persistence", linewidth=1.5, alpha=0.8, linestyle=":")
     ax.set_xlabel("Reading Index")
     ax.set_ylabel("Disinfectant Level (%)")
     ax.set_title(f"Virtual Sensing — {first_cubicle} (First 500 readings)")

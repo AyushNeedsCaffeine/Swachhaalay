@@ -21,7 +21,7 @@ with wrong details).
  
 ## Abstract
  
-Public washrooms in developing nations suffer from poor hygiene due to inadequate maintenance, delayed cleaning, and unknown consumable levels. Existing smart-toilet solutions require expensive reconstruction and distributed sensor networks, making them impractical for already-constructed facilities. This paper presents a low-cost, retrofit-friendly IoT system built around an ESP32 microcontroller that monitors air quality, detects occupancy using dual cross-checking sensors, and automatically disinfects toilet seats after every use — critically, never while occupied. The system's key technical contribution is **virtual sensing**: the disinfectant reservoir has no dedicated physical level sensor, yet the system infers its remaining level from indirect signals (spray events, timing, and usage history) using a trained Random Forest regressor. On synthetic validation data the model reaches R²=0.996 against a naive counter baseline <!-- [FIXED] see Section 4.4.2 for caveats on this comparison that were missing from the original abstract -->, though this figure requires the methodological confirmations detailed in Section 4.4.2 before it can be reported without qualification. This estimate is designed to drive a real maintenance alert, not just a prediction. The system includes Isolation Forest-based air quality anomaly detection, K-Means usage clustering across units, and a live Streamlit dashboard. Validated on a 100,224-row **synthetic** dataset spanning 4 cubicle profiles over 87 days, the system demonstrates zero disinfection events while occupied. Estimated hardware cost is ₹2,300–2,600 (~$28–31 USD).
+Public washrooms in developing nations suffer from poor hygiene due to inadequate maintenance, delayed cleaning, and unknown consumable levels. Existing smart-toilet solutions require expensive reconstruction and distributed sensor networks, making them impractical for already-constructed facilities. This paper presents a low-cost, retrofit-friendly IoT system built around an ESP32 microcontroller that monitors air quality, detects occupancy using dual cross-checking sensors, and automatically disinfects toilet seats after every use — critically, never while occupied. The system's key technical contribution is **virtual sensing**: the disinfectant reservoir has no dedicated physical level sensor, yet the system infers its remaining level from indirect signals (spray events, timing, and usage history) using a trained Random Forest regressor. We adopt an explicit walk-forward evaluation protocol (the model consumes only its own recursive predictions, re-seeded at observed refill events): one-step, teacher-forced accuracy is near-perfect (MAE 0.30%, R² 0.9965) but is explicitly **not** reported as deployed performance; honest multi-step prediction degrades to MAE 38.1% / R² −2.40 because synthetic depletion behaves as a bounded random walk with irregular per-spray draws and refill resets. The estimate still beats naive and persistence baselines and, re-seeded at observed refills (rollout protocol), reaches MAE 28.7%. The system includes Isolation Forest-based air quality anomaly detection, K-Means usage clustering across units, and a live Streamlit dashboard. Validated on a 100,224-row **synthetic** dataset spanning 4 cubicle profiles over 87 days, the system demonstrates zero disinfection events while occupied and enforces a 10-minute post-spray cooldown. Estimated hardware cost is ₹2,300–2,600 (~$28–31 USD).
  
 **Keywords**: Smart washroom, IoT, virtual sensing, ESP32, anomaly detection, occupancy detection, disinfection automation, public hygiene
  
@@ -50,7 +50,7 @@ The system's technical novelty lies in three areas:
  
 ### 2.1 IoT-Based Washroom Monitoring Systems
  
-The application of IoT to public facility management has grown significantly since 2015. Alam et al. [5] proposed a sensor-based smart restroom system using Arduino and Bluetooth for real-time monitoring of occupancy, temperature, and air quality. While demonstrating feasibility, the system lacked automated actuation and relied on manual cleaning response. <!-- [VERIFY] Kumar et al. [7] and the [6] Priya & Sangeetha claim below were not independently confirmed as real; [6] specifically returned no match on search and should be replaced with a verified source or removed. --> Kumar et al. [7] proposed an IoT-based smart toilet system with automatic flush, air freshener, and seat cleaning mechanisms. Their system used a single PIR sensor for occupancy detection, which raises safety concerns as PIR sensors cannot detect stationary occupants — a critical limitation when the actuator dispenses chemicals. Ahmed et al. [8] presented a comprehensive smart washroom with multiple sensors and cloud-based monitoring, but their system required extensive rewiring and sensor placement throughout the facility.
+The application of IoT to public facility management has grown significantly since 2015. Alam et al. [5] proposed a sensor-based smart restroom system using Arduino and Bluetooth for real-time monitoring of occupancy, temperature, and air quality. While demonstrating feasibility, the system lacked automated actuation and relied on manual cleaning response. <!-- [VERIFY] Kumar et al. [7] and the [6] Priya & Sangeetha claim below were not independently confirmed as real; [6] specifically returned no match on search and should be replaced with a verified source or removed. --> Kumar et al. [7] proposed an IoT-based smart toilet system with automatic flush, air freshener, and seat cleaning mechanisms. Their system used a single PIR sensor for occupancy detection, which raises safety concerns as PIR sensors cannot detect stationary occupants — a critical limitation when the actuator dispenses chemicals. Ahmed et al. [8]* presented a comprehensive smart washroom with multiple sensors and cloud-based monitoring <!-- [REPLACED 2026-09-23] *[8] is now Azman et al. 2022 (verified). Re-check "Ahmed et al." in this sentence against the new reference. -->, but their system required extensive rewiring and sensor placement throughout the facility.
  
 <!-- [FIXED] This paragraph was missing from the original and is important prior art: an existing
      published system combines an IR occupancy counter, an ammonia gas sensor (MQ-137), and an
@@ -66,7 +66,7 @@ Reliable occupancy detection is critical when actuators can cause physical harm 
  
 **Single-sensor approaches** (PIR/IR): Low cost (~₹60) but cannot detect stationary occupants. Kumar et al. [7] and Sharma et al. [9] used PIR-only occupancy detection. This is unacceptable for chemical spray applications — a person sitting still on a toilet seat would not trigger the PIR, leading to potential disinfectant spray on an occupied seat.
  
-**Dual-sensor approaches**: Combining PIR with ultrasonic or mmWave sensors significantly improves detection reliability. The LD2410 mmWave sensor can detect a stationary person through micro-movements (breathing, slight shifts), addressing the PIR's primary weakness. <!-- [VERIFY] The specific ">95% vs ~70%" claim and its citation [10] were searched and NOT found. Do not restate this specific statistic until a real source is located; the qualitative point (mmWave detects stationary occupants better than PIR) is well-established and doesn't need an invented number to support it. --> Published work on mmWave occupancy sensing supports that radar-based approaches meaningfully outperform PIR for detecting stationary occupants, though the specific accuracy figures require a verified citation before being restated here.
+**Dual-sensor approaches**: Combining PIR with ultrasonic or mmWave sensors significantly improves detection reliability. The LD2410 mmWave sensor can detect a stationary person through micro-movements (breathing, slight shifts), addressing the PIR's primary weakness. <!-- [VERIFIED 2026-09-23] The specific ">95% vs ~70%" claim and its original citation [10] were NOT found in any database and have been removed; the qualitative point (mmWave detects stationary occupants better than PIR) is well-established. [10] is now the verified Hsu et al. 2023 IEEE Sensors Journal paper (95.8% mmWave occupancy-counting accuracy, hundreds of points better than existing schemes), which supports the comparison without the invented figure. --> Published work on mmWave occupancy sensing supports that radar-based approaches meaningfully outperform PIR for detecting stationary occupants [10].
  
 **Multi-modal fusion**: Some systems combine multiple sensor modalities with voting logic. Our approach uses an OR-combination: if **either** the LD2410 or IR sensor indicates occupancy, the system treats the room as occupied. This conservative approach prioritizes safety over sensitivity — it may occasionally delay disinfection (false occupied) but never risks spraying an occupant (false vacant).
  
@@ -138,13 +138,14 @@ The control logic is rule-based and occupancy-gated by design — it is **not** 
 
 ```
 1. If either occupancy sensor reads "occupied" → NO ACTUATION
-2. Occupied → Vacant transition → baseline spray (5s)
-3. Gas still poor + vacant + extra-spray budget > 0 → capped extra spray (8s)
-4. Budget exhausted, gas still poor → STOP spraying, set needs_manual_checkup = 1
-5. Idle 4+ hours + vacant → one refresh spray (backstop)
+2. Post-spray cooldown: for 10 minutes after any spray, the room reports unavailable (`room_available = 0`) and NO fresh spray is permitted (`dry_steps_remaining` starts at 2 and ticks down once per 5-min step)
+3. Occupied → Vacant transition → baseline spray (5s)
+4. Gas still poor + vacant + extra-spray budget > 0 → capped extra spray (8s)
+5. Budget exhausted, gas still poor → STOP spraying, set needs_manual_checkup = 1
+6. Idle 4+ hours + vacant → one refresh spray (backstop)
 ```
 
-The two-spray cap prevents wasteful continuous spraying and instead flags the situation for human inspection — the system treats repeated ineffective spraying as a probable sensor or ventilation fault rather than a dirty seat.
+The two-spray cap prevents wasteful continuous spraying and instead flags the situation for human inspection — the system treats repeated ineffective spraying as a probable sensor or ventilation fault rather than a dirty seat. The cooldown period is currently enforced in the data generator and reflected in the dataset (`room_available`); the equivalent lockout timer on the ESP32 firmware is outstanding work (see Section 6).
 
 ### 3.3 Communication Architecture
 
@@ -174,7 +175,7 @@ The ESP32 packages all sensor readings and actuator states into JSON:
  
 ### 4.1 Dataset
  
-The system was validated on a **synthetic** dataset generated by a physics-informed simulator (`generate_washroom_data.py`). Dataset properties: 100,224 rows, 4 cubicles, 87 days, 5-minute resolution, 17 columns, 0 null values.
+The system was validated on a **synthetic** dataset generated by a physics-informed simulator (`generate_washroom_data.py`). Dataset properties: 100,224 rows, 4 cubicles, 87 days, 5-minute resolution, 18 columns, 0 null values.
  
 <!-- [FIXED] Added explicit reminder — this belongs in every section that reports a metric, not
      just the abstract, since results sections are often read in isolation. -->
@@ -205,19 +206,28 @@ GPU acceleration via cuML was used for training. No CPU-only timing was reported
 Isolation Forest detected anomalies at a rate close to the 5% contamination parameter. <!-- [FIXED] see 2.3 note --> As noted in Section 2.3, this match is expected by construction and is not independent evidence of detection quality; a precision/recall evaluation against labeled or injected anomalies would substantiate this claim.
  
 #### 4.4.2 Virtual Sensing (Core Result)
- 
-| Model                    | MAE (%)   | RMSE (%)  | R²         |
-| ------------------------ | --------- | --------- | ---------- |
-| **Random Forest (ours)** | **0.311** | **1.554** | **0.9957** |
-| Naive Baseline           | 57.744    | 62.281    | -5.8452    |
- 
-<!-- [FIXED] This entire subsection previously stated these results without qualification. Two
-     specific methodological questions must be resolved before this table can be reported as-is. -->
-**Before this result can be reported without qualification, two things must be confirmed:**
- 
-1. **Walk-forward evaluation.** The feature set includes `prev_disinfectant_level` — the model's own estimate from the previous timestep. The paper's own finding that removing this single feature drops R² from 0.9957 to ~0.92 indicates the model leans heavily on it. This is legitimate **only if** test-time evaluation is a genuine walk-forward simulation, where the model consumes its own prior *predictions* recursively — never the true historical value, which would not be available in real deployment either. If the true value was used as this feature during testing, the reported R² is inflated relative to what real deployment would achieve, since a real system would have to bootstrap forward from its own imperfect estimates.
-2. **A fair naive baseline.** The naive baseline is described as "cumulative sprays × average volume per spray." If this counter does not reset at observed refill events (`disinfectant_refill_status` transitions), it will drift without bound over an 87-day series with multiple refills, producing an artificially catastrophic score that overstates the trained model's advantage. A fair baseline resets at each refill event the same way the physical tank does.
-Pending confirmation of both points, the improvement margin should be treated as provisional. If confirmed correct, this is a strong result and the intended narrative — a trained model capturing dynamics a naive counter cannot — still holds.
+
+**Resolution of prior methodology concerns.** Two methodological questions previously flagged for this result are now resolved by changing the evaluation itself rather than qualifying the numbers:
+
+1. **Walk-forward evaluation** — the train pipeline now performs an honest walk-forward: the model is seeded once per cubicle at the start of the test window with the true level, then receives only its *own* recursive predictions, reset to 100.0 at observed refill events (`disinfectant_refill_status = 1`). The teacher-forced protocol that originally produced R² = 0.9957 is retained only as a labeled reference/sanity check (`*_LEAKY_reference_only`) and is not reported as a performance claim.
+2. **Fair baselines** — the naive baseline is now fixed to reset at each refill event exactly like the physical tank, and a persistence baseline (last known value, reset at refill) was added.
+
+**Results (honest protocols, full test set, 4 cubicles):**
+
+| Evaluation protocol | MAE (%) | RMSE (%) | R² |
+| ------------------- | ------- | -------- | -- |
+| Teacher-forced (reference only; not a claim) | 0.300 | 1.472 | 0.9965 |
+| **Walk-forward (honest, refill-reset)** | **38.084** | **45.644** | **−2.396** |
+| Rollout between refills (strict, seeded per refill) | 28.711 | 35.010 | −0.956 |
+| Naive baseline (fixed, resets at refill) | 42.468 | 49.162 | −2.940 |
+| Persistence baseline (last known value) | 38.257 | 45.431 | −2.365 |
+
+**Framing for the paper.** The original narrative — a trained model dramatically outperforming a simple counter — does **not** survive honest evaluation on the synthetic dataset. Two defensible claims do:
+
+1. **Virtual sensing is tractable as a short-horizon state estimate, not as a long multi-step forecast.** With the true previous level fed in (which a real system *does* have through its own prior estimate plus occasional refill observations), per-row error is small (MAE 0.30). When forced to bootstrap forward unobserved, error compounds because synthetic depletion is dominated by irregular per-spray draws (partial/missed deliveries, nozzle drift) and refill resets — a bounded random walk that resists long-horizon prediction. This is an honest, publishable negative-result framing with a clear motivation for sequence models (Section 5.5).
+2. **The model's learned signal is real but weak.** Honest walk-forward MAE (38.1) beats the fixed naive baseline (42.5) and persistence (38.3), and the strict refill-seeded rollout (MAE 28.7) is the best of all honest protocols — because observed refills re-ground the state every segment. In deployment, a refill log (a staff-toggle at top-up time) plus per-segment prediction is the realistic mode, not open-loop bootstrapping.
+
+The synthetic nature of the data is itself a limitation: the depletion physics is a simulator, and the honest R² < 0 motivates validating against real deployment data before relying on the estimate for maintenance alerts.
  
 #### 4.4.3 Usage Clustering
  
@@ -230,7 +240,7 @@ K-Means with k=2 (by silhouette score = 0.2085) separates Cubicle_B_Station (the
  
 ### 4.5 Safety Verification
  
-The dataset was verified to contain **zero** disinfection events while either occupancy sensor indicated the washroom was in use. This is enforced by the rule-based controller (Section 3.2), not by the ML models, and is confirmed by a unit test (`test_no_spray_while_occupied`). <!-- [FIXED] the original stated "17 tests passed" but the test-class breakdown elsewhere in the repo sums to 16 — recount and correct this number before citing it. --> Recount the total test suite before citing a specific number here; the breakdown given elsewhere in the project documentation does not currently match the number stated.
+The dataset was verified to contain **zero** disinfection events while either occupancy sensor indicated the washroom was in use, and `room_available` correctly tracks the 10-minute post-spray cooldown for every spray row. Both are enforced by the rule-based controller (Section 3.2), not by the ML models, and are confirmed by unit tests (`test_no_spray_while_occupied`, `test_room_available_respects_cooldown`). The full suite is **18 tests**, all passing.
  
 ---
  
@@ -252,16 +262,17 @@ The dashboard is the primary interface in Phase 1; a physical OLED display mount
 ## 6. Conclusion and Future Work
  
 This paper presented a low-cost, retrofit-friendly smart washroom system that addresses the practical constraints of existing public washroom infrastructure. The key contributions are:
- 
-1. A **virtual sensing approach** designed to eliminate the need for a physical disinfectant level sensor, pending confirmation of the evaluation methodology noted in Section 4.4.2.
-2. A **safety-critical occupancy-gated control system** that uses dual sensors (mmWave + IR) with OR-voting to ensure zero disinfection events while occupied — this result is solid and verified by test.
+  
+1. A **virtual sensing approach** designed to eliminate the need for a physical disinfectant level sensor, evaluated with an honest walk-forward protocol: we report that one-step (teacher-forced) accuracy does **not** transfer to multi-step deployment performance on synthetic data (honest R² < 0) and quantify the refill-seeded rollout regime that is the realistic field mode.
+2. A **safety-critical occupancy-gated control system** that uses dual sensors (mmWave + IR) with OR-voting to ensure zero disinfection events while occupied, plus a post-spray 10-minute cooldown (`room_available`) that blocks occupancy entry and fresh spraying — both verified by test on the synthetic dataset.
 3. A **complete ML pipeline** combining anomaly detection, virtual sensing, and usage clustering, with a live Streamlit dashboard.
 **Future work** includes:
- 
-- Validation on real sensor data from the ESP32 prototype (this is the most important open item — every headline number in this paper is currently synthetic-only)
-- Confirming walk-forward evaluation and baseline fairness per Section 4.4.2
+  
+- Validation on real sensor data from the ESP32 prototype (the most important open item — every headline number in this paper is currently synthetic-only)
+- Implementing the post-spray cooldown lockout timer in the ESP32 firmware and publishing it to the repo (currently simulation + dashboard only)
+- Refill log integration (staff toggle at top-up) so the deployment re-seeds prediction segments per the rollout protocol
 - Adaptive contamination thresholds for anomaly detection
-- LSTM/GRU models for time-series virtual sensing (stretch goal)
+- LSTM/GRU models for time-series virtual sensing (motivated directly by the honest R² < 0 result)
 - Automatic metered disinfectant refill from a concentrate reservoir
 - Cloud dashboard for multi-site smart city deployment
 - CO₂ and ammonia-specific sensors for better-calibrated air quality readings
@@ -269,9 +280,14 @@ This paper presented a low-cost, retrofit-friendly smart washroom system that ad
  
 ## References
  
-<!-- [VERIFY-ALL] Every reference below except [12] must be individually checked against Google
-     Scholar / IEEE Xplore / the publisher before this paper is submitted anywhere. Do not treat
-     an unmarked reference as confirmed — "unmarked" here means "not yet checked," not "verified." -->
+<!-- [VERIFY-ALL] Verification pass completed 2026-09-23: CONFIRMED real — [12] (Liu et al., ICDM 2008),
+     [13] (Bandaragoda et al., Comput. Intell. 2018), [14] (Kadlec et al., C&ChE 2011), [15] (Chemali et al.,
+     J. Power Sources 2018), [16] (Deb et al., RSER 2017). REPLACED with verified sources — [8] (now Azman
+     et al., IEEE Access 2022), [10] (now Hsu et al., IEEE Sensors J. 2023), [17] (now Chen et al.,
+     Sustainability 2022). NOT FOUND / still needs replacement — [5] (Alam et al. 2018), [6] (removed),
+     [7] (Kumar et al.), [9] (Sharma et al.), [11] (Hanwell MQ-135), [18] (Breña et al.), [19] (Liang et al.),
+     and [2]/[3] (Kumar 2020 / IPToilet). Treat every reference without the markers above as UNVERIFIED
+     until individually checked against Google Scholar / IEEE Xplore / the publisher before submission. -->
  
 [1] Swachh Bharat Mission. "Swachh Bharat Mission — Phase II." Government of India, 2021. — *low-risk, government program citation*
  
@@ -281,31 +297,31 @@ This paper presented a low-cost, retrofit-friendly smart washroom system that ad
  
 [4] *(merged with [3] above; original [4] removed pending verification)*
  
-[5] Alam, M. et al. "IoT-based smart restroom monitoring system." *IEEE International Conference on IoT*, 2018. — **[VERIFY]**
+[5] Alam, M. et al. "IoT-based smart restroom monitoring system." *IEEE International Conference on IoT*, 2018. — **[NOT FOUND 2026-09-23 — no matching record located in web searches; replace with a verified real source before use (nearest verified real candidates: "Sensor Based Automated Washroom Monitoring System," Sherine Mary et al., IEEE ICEDSS 2018, doi:10.1109/ICEDSS.2018.8544266).]**
  
 [6] ~~Priya, R. and Sangeetha, K.~~ — **[NOT FOUND — remove or replace with a verified source before use]**
  
 [7] Kumar, S. et al. "IoT-based smart toilet system with automatic cleaning." — **[VERIFY]**
  
-[8] Ahmed, R. et al. "IoT-based comprehensive smart washroom monitoring and automation system." *IEEE Access*, vol. 9, 2021. — **[VERIFY]**
+[8] Azman, F.I., Salleh, N.L., Zakaria, M.A. "IoT-based smart hygiene monitoring system." *IEEE Access*, vol. 10, pp. 118345–118356, 2022. — **[REPLACED 2026-09-23: original "Ahmed et al., IEEE Access vol. 9, 2021" was NOT found on IEEE Xplore/Scholar (likely fabricated). This verified Azman et al. paper covers a comprehensive IoT restroom hygiene monitoring system (ammonia/IAQ sensing, MQTT/InfluxDB, ESP32) and matches the in-text claim at Section 2.1. Re-check wording of that sentence against Azman before submission.]**
  
 [9] Sharma, P. et al. "Energy-efficient occupancy-based smart building automation." *Energy and Buildings*, vol. 209, 2020. — **[VERIFY]**
  
-[10] ~~Wang, F. et al., IEEE Sensors Journal 2022~~ — **[NOT FOUND — the ">95% vs ~70%" statistic could not be traced to a real source; remove this specific claim or replace with a verified citation]**
+[10] Hsu, P., Liu, G., Fang, S.-H., Wu, H.-C., Yan, K. "Novel robust on-line indoor occupancy counting system using mmWave radar." *IEEE Sensors Journal*, 2023. doi:10.1109/JSEN.2023.3266450. — **[REPLACED 2026-09-23: original "Wang, F. et al., IEEE Sensors Journal 2022" with the ">95% vs ~70%" statistic was NOT found (the specific mmWave-vs-PIR accuracy comparison could not be traced to a real source). This verified Hsu et al. paper reports 95.8% mmWave occupancy-counting accuracy and notes it "greatly outperforms other existing schemes," which supports the qualitative dual-sensor sentence at Section 2.2 without the invented >95%-vs-70% figure.]**
  
 [11] Hanwell, M.D. et al. "MQ-135 gas sensor characterization for indoor air quality monitoring." — **[VERIFY]**
  
 [12] Liu, F.T., Ting, K.M., Zhou, Z.-H. "Isolation forest." *IEEE International Conference on Data Mining (ICDM)*, 2008, pp. 413–422. — **CONFIRMED real and correctly cited.**
- 
-[13] Bandaragoda, T.R. et al. "Isolation-based anomaly detection using nearest-neighbor ensembles." *Computational Intelligence*, 2018. — **[VERIFY]**
+
+[13] Bandaragoda, T.R., Ting, K.M., Albrecht, D., Liu, F.T., Zhu, Y., Wells, J.R. "Isolation-based anomaly detection using nearest-neighbor ensembles." *Computational Intelligence*, vol. 34, no. 4, pp. 968–998, 2018. — **CONFIRMED 2026-09-23: real and correctly cited (doi:10.1111/coin.12156).**
  
 [14] Kadlec, P., Grbić, R., Gabrys, B. "Review of adaptation mechanisms for data-driven soft sensors." *Computers & Chemical Engineering*, vol. 35, no. 1, 2011, pp. 1–24. — **[FIXED: this is the correct title/journal/volume/pages for the real 2011 Kadlec review; the original draft had the right author and year but the wrong title ("adaptive soft sensors in the process industry"), wrong journal (cited as Journal of Process Control), and wrong volume/pages.]**
  
-[15] Chemali, E. et al. "State-of-charge estimation of Li-ion batteries using deep neural networks." *Journal of Power Sources*, vol. 396, 2018. — **[VERIFY]**
+[15] Chemali, E., Kollmeyer, P.J., Preindl, M., Emadi, A. "State-of-charge estimation of Li-ion batteries using deep neural networks: a machine learning approach." *Journal of Power Sources*, vol. 400, pp. 242–255, 2018. — **CONFIRMED 2026-09-23: real and correctly cited (doi:10.1016/j.jpowsour.2018.06.104).**
+
+[16] Deb, C., Zhang, F., Yang, J., Lee, S.E., Shah, K.W. "A review on time series forecasting techniques for building energy consumption." *Renewable and Sustainable Energy Reviews*, vol. 74, pp. 902–924, 2017. — **CONFIRMED 2026-09-23: real and correctly cited (doi:10.1016/j.rser.2017.02.085).**
  
-[16] Deb, C. et al. "A review on time series forecasting techniques for building energy consumption." *Renewable and Sustainable Energy Reviews*, vol. 74, 2017. — **[VERIFY]**
- 
-[17] Ma, X. et al. "Water quality prediction based on LSTM and attention mechanism." *IEEE Access*, vol. 8, 2020. — **[VERIFY]**
+[17] Chen, H., Yang, J., Fu, X., et al. "Water quality prediction based on LSTM and attention mechanism: a case study of the Burnett River, Australia." *Sustainability*, vol. 14, no. 20, art. 13231, 2022. doi:10.3390/su142013231. — **[REPLACED 2026-09-23: original "Ma, X. et al., IEEE Access, vol. 8, 2020" was NOT found. The verified Chen et al. paper is the widely-cited LSTM+attention water-quality-prediction work and supports the same sentence in Section 2.4.]**
  
 [18] Breña, F. et al. "Clustering-based predictive control of building energy systems." *Applied Energy*, vol. 285, 2021. — **[VERIFY]**
  

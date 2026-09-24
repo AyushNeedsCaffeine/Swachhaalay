@@ -4,7 +4,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-17%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-18%20passing-brightgreen)](tests/)
 [![cuML GPU](https://img.shields.io/badge/GPU-cuML%2026.08-76B900?logo=nvidia)](https://rapids.ai/cuml/)
 
 ---
@@ -138,20 +138,25 @@ Detects unusual air quality patterns (chemical spills, sensor drift, blocked ven
 
 Estimates disinfectant tank level **without a physical sensor** using indirect signals (spray events, timing, usage history). This is the key technical novelty — the ML output drives a real maintenance alert.
 
+**Honest evaluation protocol.** Tank level is a measured, indirectly-observed quantity, so a one-step "teacher-forced" fit (feeding the *true* previous level at every test row) is **not** representative of deployment. The headline number below is a **walk-forward** evaluation: the model is seeded with the true level once per cubicle at the start of the test window and then receives only its *own* previous prediction, reset to 100.0 at observed refill events. A stricter **rollout-between-refills** protocol (seed at each refill, own-predictions only, rows before the first test-window refill excluded) is reported separately. The reference-only (teacher-forced) figure is included solely as a pipeline sanity check.
+
 | Metric | Value |
 |--------|-------|
 | **Model** | Random Forest Regressor |
 | **Input Features** | 13 (prev level, spray rates, gas dynamics, time encoding) |
 | **Training Data** | 69,152 rows (first 69 days) |
 | **Test Data** | 31,072 rows (last 18 days) |
-| **Training Time (GPU)** | ~15.3s |
+| **Training Time (GPU)** | ~11s |
 
-| Model | MAE (%) | RMSE (%) | R² |
-|-------|---------|----------|-----|
-| **Random Forest (ours)** | **0.311** | **1.554** | **0.9957** |
-| Naive Baseline | 57.744 | 62.281 | -5.8452 |
+| Evaluation | MAE (%) | RMSE (%) | R² |
+|------------|---------|----------|----|
+| Teacher-forced (reference only) | 0.300 | 1.472 | 0.9965 |
+| **Walk-forward (honest, headline)** | **38.084** | **45.644** | **−2.396** |
+| Rollout between refills (strict) | 28.711 | 35.010 | −0.956 |
+| Naive baseline (fixed: reset at refill) | 42.468 | 49.162 | −2.940 |
+| Persistence baseline (last known value) | 38.257 | 45.431 | −2.365 |
 
-**185× MAE improvement** over naive baseline. The model captures complex depletion dynamics (varying spray volumes, refill events, usage patterns) that a simple counter cannot.
+The honest walk-forward model slightly beats both baselines in MAE but remains well below R² = 0 on this *synthetic* dataset: multi-step level prediction degrades quickly because depletion is dominated by irregular spray volumes and refill resets. The teacher-forced 0.9957 figure previously reported here was an artifact of the evaluation protocol and has been corrected; on physical hardware a tank-level sensor or refill log would be needed to ground the model's predictions across time.
 
 ### Feature 3: Usage Clustering
 
@@ -173,8 +178,9 @@ Rule-based control system (not ML) ensuring deterministic, auditable safety:
 
 1. **OR-Logic**: If **either** LD2410 or IR sensor indicates occupied → **NO actuation**
 2. **Exit-Triggered Spray**: Baseline spray on occupied → vacant transition
-3. **Two-Spray Cap**: Maximum 2 extra sprays per cycle; exhausted → `needs_manual_checkup` flag
-4. **Zero spray events while occupied** — verified by unit test `test_no_spray_while_occupied`
+3. **Post-Spray Cooldown**: 10-minute dry/cooldown window after each spray — the room is reported unavailable (`room_available = 0`) and **no fresh spray is permitted** until it elapses
+4. **Two-Spray Cap**: Maximum 2 extra sprays per cycle; exhausted → `needs_manual_checkup` flag
+5. **Zero spray events while occupied** — verified by unit test `test_no_spray_while_occupied`
 
 ---
 
@@ -186,7 +192,7 @@ Rule-based control system (not ML) ensuring deterministic, auditable safety:
 | **Cubicles** | 4 (distinct traffic profiles) |
 | **Duration** | 87 days (2026-08-01 → 2026-10-26) |
 | **Resolution** | 5-minute intervals |
-| **Columns** | 17 (sensor readings, actuator states, derived features, labels) |
+| **Columns** | 18 (sensor readings, actuator states, derived features, labels, cooldown flag) |
 | **Null Values** | 0 |
 
 ### Cubicle Profiles
@@ -266,10 +272,10 @@ Swachhaalay/
 │       └── historical_analytics.py  # Tab 3: Trends, heatmaps, consumption
 │
 ├── tests/
-│   └── test_ml.py                   # 17 unit tests (data, models, features, safety)
+│   └── test_ml.py                   # 18 unit tests (data, models, features, safety)
 │
 ├── docs/
-│   ├── DATA_DICTIONARY.md           # All 17 columns documented
+│   ├── DATA_DICTIONARY.md           # All 18 columns documented
 │   ├── MODEL_CARD.md                # Model cards for all 3 models
 │   ├── TRAINING_LOG.md              # Experiment results & hyperparameters
 │   └── *.docx / *.pptx             # Reports & presentation
@@ -297,8 +303,8 @@ python -m pytest tests/test_ml.py -v
 
 | Test Class | Tests | Coverage |
 |------------|-------|----------|
-| `TestDataLoading` | 7 | CSV integrity, shape, nulls, cubicles, timestamps, value ranges, binary columns |
-| `TestModels` | 6 | Model existence, metadata correctness, R² threshold, cluster count |
+| `TestDataLoading` | 8 | CSV integrity, shape, nulls, cubicles, timestamps, value ranges, binary columns, cooldown flag |
+| `TestModels` | 7 | Model existence, metadata correctness, honest-metric protocol gate, cluster count |
 | `TestFeatureEngineering` | 2 | Anomaly features (≥10), virtual sensing features (≥8) |
 | `TestSafetyRules` | 1 | Zero spray events while occupied |
 
@@ -328,7 +334,7 @@ python -m pytest tests/test_ml.py -v
 
 | Document | Description |
 |----------|-------------|
-| [Data Dictionary](docs/DATA_DICTIONARY.md) | All 17 columns with types, ranges, descriptions |
+| [Data Dictionary](docs/DATA_DICTIONARY.md) | All 18 columns with types, ranges, descriptions |
 | [Model Card](docs/MODEL_CARD.md) | Detailed model cards for anomaly detection, virtual sensing, clustering |
 | [Training Log](docs/TRAINING_LOG.md) | Experiment results, hyperparameters, GPU timing |
 | [Paper Draft](paper/paper_draft.md) | Full academic paper with 19 references |

@@ -5,6 +5,7 @@
 **Duration**: 87 days (2026-08-01 to 2026-10-26)
 **Cubicles**: 4 (distinct traffic profiles)
 **Total rows**: 100,224 (25,056 per cubicle)
+**Columns**: 18
 
 ## Columns
 
@@ -27,6 +28,17 @@
 | 15 | `hours_since_deep_clean` | float | 0.0 → ~24.0 | Hours since 05:00 janitorial reset |
 | 16 | `hygiene_score` | float | 0.0 → 100.0 | Composite score: `100 - (gas×0.12) - (hrs_deep×1.8) - (entries×0.4) + N(0,8)` |
 | 17 | `needs_cleaning` | int (0/1) | 0 or 1 | **Target label**. Probabilistic: `P(clean) = 1 / (1 + exp((score - 45) / 6))` |
+| 18 | `room_available` | int (0/1) | 0 or 1 | Post-spray cooldown flag. 0 while the 10-minute dry period after a spray is running (`dry_steps_remaining > 0`); the room is reported unavailable and no fresh spray is permitted until it elapses |
+
+## Depletion Physics (v2)
+
+The disinfectant tank model is deliberately **irregular** (per-spray draw is a random variable, not a constant):
+
+- **Per-spray draw** `~U(0.10, 0.55)`% per spray (nozzle-dependent)
+- **Partial delivery** with 15% probability → draw × `U(0.20, 0.45)`
+- **Missed spray** with 5% probability → draw = 0 (blocked/wet nozzle)
+- **Nozzle drift**: draw scales by `1 + (0.006 × day_index) + nozzle_offset`, a slow per-cubicle wear that inflates consumption over the 87-day window
+- **Refill**: level crosses below 15% → `disinfectant_refill_status = 1`, level reset to 100% (manual staff top-up event — treated as an *observed* event by the ML evaluation, never guessed)
 
 ## Cubicle Traffic Profiles
 
@@ -40,13 +52,15 @@
 ## Disinfection Control Logic
 
 1. Either sensor "occupied" → **never spray**
-2. Occupied → Vacant → baseline spray (exit-triggered)
-3. Gas still poor + vacant → up to 2 extra sprays (capped)
-4. Still poor after 2 extra → stop + `needs_manual_checkup = 1`
-5. Idle 4+ hours + vacant → one refresh spray
+2. **Post-spray cooldown**: for 10 minutes (2 rows) after any spray, `room_available = 0` and spray is suppressed (`dry_steps_remaining` set to 2 at the spray row, decremented once per row)
+3. Occupied → Vacant → baseline spray (exit-triggered)
+4. Gas still poor + vacant → up to 2 extra sprays (capped)
+5. Still poor after 2 extra → stop + `needs_manual_checkup = 1`
+6. Idle 4+ hours + vacant → one refresh spray
 
 ## Notes
 
-- `hygiene_score` and `needs_cleaning` are **synthetic labels** for pipeline development, not real measurements
-- Water refill is automatic; disinfectant refill is manual (staff alert only)
+- `hygiene_score` and `needs_cleaning` are **synthetic labels** for pipeline development, not real measurements. `needs_cleaning` is used only in the EDA (`data/explore.py`) and the historical-analytics dashboard tab — it is **not** an ML model target in this repo.
+- Water refill is automatic; disinfectant refill is manual (staff alert only) — and, in the ML evaluation, an *observed* event that re-seeds the virtual-sensing prediction
+- The `room_available` cooldown is enforced in the data generator and surfaced in the dashboard; the ESP32 firmware cooldown lockout timer is not yet in this repo
 - The dataset models 4 hypothetical cubicles; physical prototype is a single unit

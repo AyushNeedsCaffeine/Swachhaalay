@@ -27,7 +27,7 @@ class TestDataLoading:
     def test_csv_shape(self):
         df = pd.read_csv(DATA_PATH, parse_dates=["timestamp"])
         assert df.shape[0] == 25056 * 4, f"Expected 100224 rows (25056 per cubicle x 4), got {df.shape[0]}"
-        assert df.shape[1] == 17, f"Expected 17 columns, got {df.shape[1]}"
+        assert df.shape[1] == 18, f"Expected 18 columns, got {df.shape[1]}"
 
     def test_no_nulls(self):
         df = pd.read_csv(DATA_PATH)
@@ -57,11 +57,26 @@ class TestDataLoading:
     def test_binary_columns(self):
         df = pd.read_csv(DATA_PATH)
         binary_cols = ["occupancy_ld2410", "motion_ir", "mist_maker_status",
-                       "water_refill_status", "needs_manual_checkup",
-                       "needs_cleaning"]
+                       "water_refill_status", "disinfectant_refill_status",
+                       "needs_manual_checkup", "needs_cleaning", "room_available"]
         for col in binary_cols:
             unique_vals = set(df[col].unique())
             assert unique_vals.issubset({0, 1}), f"{col} has non-binary values: {unique_vals}"
+
+    def test_room_available_respects_cooldown(self):
+        """room_available must track the post-spray cooldown state machine exactly:
+        decrement once per 5-min row, block availability while >0, restart on spray."""
+        df = pd.read_csv(DATA_PATH)
+        df = df.sort_values(["cubicle_id", "timestamp"]).reset_index(drop=True)
+        dry_steps = 0
+        for _, row in df.iterrows():
+            dry_steps = max(0, dry_steps - 1)
+            assert int(dry_steps == 0) == row["room_available"], (
+                f"{row['cubicle_id']}: room_available={row['room_available']} at "
+                f"{row['timestamp']} but cooldown implies {int(dry_steps == 0)}"
+            )
+            if row["mist_maker_status"] == 1:
+                dry_steps = 2  # DRY_STEPS (10 minutes at 5-min steps)
 
 
 class TestModels:
@@ -93,9 +108,32 @@ class TestModels:
     def test_virtual_sensing_metadata(self):
         meta = joblib.load(os.path.join(MODELS_DIR, "virtual_sensing_meta.joblib"))
         assert meta["model_type"] == "RandomForest"
-        # R² should be positive (model beats predicting the mean)
-        r2 = meta["results"]["RandomForest"]["R2"]
-        assert r2 > 0.5, f"R² too low: {r2}"
+        res = meta["results"]
+
+        # The LEAKY number is a reference for pipeline sanity only (R² should stay
+        # ~1.0 because it cheats by feeding the true previous level), never a claim
+        # about deployed performance.
+        assert "RandomForest_LEAKY_reference_only" in res
+        assert res["RandomForest_LEAKY_reference_only"]["R2"] > 0.9
+
+        # The HONEST headline is the unsuffixed walk-forward result (model's own
+        # predictions fed forward, reset only at observed refills). No R²>0 gate:
+        # on this synthetic data multi-step prediction is genuinely hard; the gate
+        # is protocol integrity -- the honest number must be present AND beat the
+        # fixed naive baseline (which blindly assumes the level never changes
+        # between refills).
+        assert res["RandomForest"]["R2"] <= res["RandomForest_LEAKY_reference_only"]["R2"]
+        assert res["RandomForest"]["MAE"] < res["NaiveBaseline_fixed"]["MAE"]
+
+        # Strict rollout (seed at refill, own-predictions only) is also reported,
+        # with its excluded pre-first-refill rows accounted for.
+        assert "RandomForest_Rollout_between_refills" in res
+        assert res["RandomForest_Rollout_between_refills"]["excluded_rows"] > 0
+        assert res["RandomForest_Rollout_between_refills"]["scored_rows"] > 0
+
+        # Metadata must clearly document that only the honest numbers are claims.
+        note = meta.get("evaluation_note", "")
+        assert "LEAKY_reference_only" in note and "walk-forward" in note
 
     def test_clustering_metadata(self):
         meta = joblib.load(os.path.join(MODELS_DIR, "usage_clustering_meta.joblib"))

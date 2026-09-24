@@ -11,6 +11,25 @@ TIME_STEP_MINUTES = 5
 ROWS_PER_DAY = (24 * 60) // TIME_STEP_MINUTES
 start_time = datetime(2026, 8, 1, 0, 0, 0)
 
+# --- DISINFECTANT DEPLETION / DRY-TIME CONFIG ---
+# The depletion process is deliberately NOT a clean linear function of the
+# spray counter: per-spray draw is noisy, some sprays only partially deliver,
+# some are effectively missed, and the nozzle slowly drifts over the 87 days as
+# the orifice wears. This is what makes virtual sensing non-trivial.
+SPRAY_DRAW_RANGE = (0.10, 0.55)          # base % of tank drawn per successful spray
+PARTIAL_SPRAY_PROB = 0.15                # fraction of sprays that only partially deliver
+PARTIAL_SPRAY_FACTOR = (0.20, 0.45)      # of a full draw, when partial
+MISSED_SPRAY_PROB = 0.05                 # pump fires but ~no product (blocked/wet nozzle)
+NOZZLE_DRIFT_PER_DAY = 0.006             # draw multiplier grows ~0.6%/day (orifice wear)
+
+# --- POST-SPRAY DRY / COOLDOWN CONFIG (Item 5) ---
+# Minimum interval after a spray completes during which the room is still
+# reported UNAVAILABLE to a new entrant, regardless of sensor state. Set from
+# the disinfectant's stated contact time (quaternary-ammonium products
+# typically cite ~10 min). Must be a multiple of TIME_STEP_MINUTES.
+MIN_SPRAY_DRY_MINUTES = 10
+DRY_STEPS = MIN_SPRAY_DRY_MINUTES // TIME_STEP_MINUTES
+
 
 def generate_cubicle_data(cubicle_id, peak_prob, regular_prob, night_prob, num_days=NUM_DAYS):
     """
@@ -30,10 +49,12 @@ def generate_cubicle_data(cubicle_id, peak_prob, regular_prob, night_prob, num_d
     hours_since_seat_spray = 0.0
     hours_since_deep_clean = 0.0
     entry_count = 0
-    odor_suppression = 0.0   # FIX: new state var so spraying actually lowers the smell for a while
-    prev_occupied = False    # FIX v2: tracks previous row's occupancy to detect an EXIT transition
-    extra_spray_streak = 0   # FIX v2: caps back-to-back "air still bad" sprays so it can't spray forever
-    checkup_flag = 0         # NEW: stays 1 once repeated spraying fails to help, until air clears
+    odor_suppression = 0.0   # spraying actually lowers the smell for a while
+    prev_occupied = False    # tracks previous row's occupancy to detect an EXIT transition
+    extra_spray_streak = 0   # caps back-to-back "air still bad" sprays so it can't spray forever
+    checkup_flag = 0         # stays 1 once repeated spraying fails to help, until air clears
+    dry_steps_remaining = 0  # post-spray cooldown; >0 -> room reported unavailable
+    nozzle_drift_offset = np.random.uniform(-0.3, 0.3)  # slight per-cubicle drift variation
 
     for ts in timestamps:
         hour, minute = ts.hour, ts.minute
@@ -43,20 +64,23 @@ def generate_cubicle_data(cubicle_id, peak_prob, regular_prob, night_prob, num_d
         if hour == 5 and minute == 0:
             hours_since_deep_clean = 0.0
 
-        # 1. Occupancy simulation (peak vs regular vs night, per-cubicle profile)
+        # Cooldown ticks down one 5-min step per row. While >0 the room is
+        # unavailable regardless of what the sensors say.
+        dry_steps_remaining = max(0, dry_steps_remaining - 1)
+        room_available = int(dry_steps_remaining == 0)
+
+        # 1. Occupancy simulation (peak vs regular vs night, per-cubicle profile).
+        # A would-be entrant is turned away during the post-spray dry period.
         if 8 <= hour <= 20:
             occupancy_prob = peak_prob if (12 <= hour <= 14) else regular_prob
         else:
             occupancy_prob = night_prob
 
-        is_occupied = np.random.choice([0, 1], p=[1 - occupancy_prob, occupancy_prob])
+        wants_occupied = bool(np.random.choice([0, 1], p=[1 - occupancy_prob, occupancy_prob]))
+        is_occupied = wants_occupied and room_available == 1
 
-        # FIX v2: entry_count used to increment on a SEPARATE random filter (0.7/0.3)
-        # from what counted as an "exit" for the spray trigger below — so a lot of
-        # single-row occupancy blips triggered an exit-spray without ever being
-        # counted as an entry, and the spray count came out far higher than the
-        # entry count. Now both use the exact same 0->1 transition, so one real
-        # visit = exactly one entry AND (later) exactly one exit-triggered spray.
+        # entry_count uses the exact same 0->1 transition as exit-triggered spray,
+        # so one real visit = exactly one entry AND (later) exactly one spray.
         is_new_entry = is_occupied and not prev_occupied
         if is_new_entry:
             entry_count += 1
@@ -68,7 +92,7 @@ def generate_cubicle_data(cubicle_id, peak_prob, regular_prob, night_prob, num_d
             occupancy_ld2410 = 0
             motion_ir = 0
 
-        # FIX: suppression decays every step, so the "just cleaned" smell reduction fades over time
+        # suppression decays every step, so the "just cleaned" smell reduction fades over time
         odor_suppression = max(0.0, odor_suppression - 6.0)
 
         # 2. MQ135 Gas PPM Dynamics
@@ -79,23 +103,20 @@ def generate_cubicle_data(cubicle_id, peak_prob, regular_prob, night_prob, num_d
             base_ppm + odor_factor + (50.0 if is_occupied else 0.0) - odor_suppression
         )
 
-        # 3. Actuators
-        # FIX v2 (safety): the old trigger (gas>250 OR timeout) fired regardless of
-        # occupancy, so it could spray while someone was still inside. New rule:
-        #   - NEVER spray while occupied (either sensor seeing someone = treat as occupied)
+        # 3. Actuators — safety rules:
+        #   - NEVER spray while occupied (either sensor seeing someone = occupied)
+        #   - NEVER spray during the post-spray dry/cooldown period
         #   - baseline spray fires right when the room goes from occupied -> vacant
         #   - if air is STILL bad a bit after that, allow up to 2 extra sprays
-        #   - CONFIRMED (team decision): if 2 extra sprays still haven't helped, stop
-        #     spraying and raise needs_manual_checkup=1 instead of continuing to spray
-        #     blind -- repeated ineffective spraying is treated as a probable sensor
-        #     or ventilation fault, not a dirty seat, and needs a person to look at it
-        #   - idle backstop if nobody has triggered a clean in a long time, still
-        #     only when the room is currently empty
+        #   - if 2 extra sprays still haven't helped, stop and raise needs_manual_checkup
+        #   - idle backstop if nobody has triggered a clean in a long time (room empty only)
         is_occupied_now = (occupancy_ld2410 == 1) or (motion_ir == 1)
         just_exited = prev_occupied and not is_occupied_now
         needs_manual_checkup = 0
 
-        if is_occupied_now:
+        if dry_steps_remaining > 0:
+            mist_maker_status = 0                       # room is drying; no fresh spray
+        elif is_occupied_now:
             mist_maker_status = 0
         elif just_exited:
             mist_maker_status = 1
@@ -105,7 +126,7 @@ def generate_cubicle_data(cubicle_id, peak_prob, regular_prob, night_prob, num_d
             extra_spray_streak += 1
         elif mq135_gas_ppm > 250 and extra_spray_streak >= 2:
             mist_maker_status = 0
-            needs_manual_checkup = 1   # 2 sprays didn't fix it -- flag for a person, don't waste more disinfectant
+            needs_manual_checkup = 1   # 2 sprays didn't fix it -- flag, don't waste disinfectant
         elif hours_since_seat_spray > 4.0:
             mist_maker_status = 1
             extra_spray_streak = 0
@@ -114,20 +135,26 @@ def generate_cubicle_data(cubicle_id, peak_prob, regular_prob, night_prob, num_d
 
         if mist_maker_status == 1:
             hours_since_seat_spray = 0.0
-            disinfectant_pct -= np.random.uniform(0.15, 0.35)
             water_level_cm -= np.random.uniform(0.02, 0.05)
             odor_suppression = np.random.uniform(80, 100)
+
+            # Slow nozzle drift: the same "spray" draws more product as the
+            # orifice wears over the 87-day window (per-cubicle variation).
+            day_index = (ts - start_time).days
+            drift = 1.0 + (NOZZLE_DRIFT_PER_DAY * day_index + max(0.0, nozzle_drift_offset))
+            draw = np.random.uniform(*SPRAY_DRAW_RANGE)
+            if np.random.rand() < MISSED_SPRAY_PROB:
+                draw *= 0.0                              # blocked/wet nozzle delivered nothing
+            elif np.random.rand() < PARTIAL_SPRAY_PROB:
+                draw *= np.random.uniform(*PARTIAL_SPRAY_FACTOR)   # partial delivery
+            disinfectant_pct -= draw * drift
+            dry_steps_remaining = DRY_STEPS              # start the post-spray cooldown
         else:
             hours_since_seat_spray += TIME_STEP_MINUTES / 60.0
 
         prev_occupied = is_occupied_now
 
-        # NEW: manual checkup / fault flag. Once the extra-spray cap is used up and the
-        # air is STILL bad, stop spraying (handled above) and raise this flag instead --
-        # it covers both meanings AJ asked for: "send someone to manually check/clean it"
-        # AND "flag this as a possible fault" for the anomaly-detection model to learn from.
-        # It stays on until gas_ppm actually drops back down (someone dealt with it),
-        # not just for one row.
+        # manual checkup / fault flag persists until gas drops back down
         if extra_spray_streak >= 2 and mq135_gas_ppm > 300:
             checkup_flag = 1
         elif checkup_flag == 1 and mq135_gas_ppm <= 260:
@@ -135,8 +162,7 @@ def generate_cubicle_data(cubicle_id, peak_prob, regular_prob, night_prob, num_d
 
         hours_since_deep_clean += TIME_STEP_MINUTES / 60.0
 
-        # FIX: water and disinfectant are separate physical tanks (per the hardware doc) —
-        # they should refill independently, not both jump to full whenever either is low.
+        # water and disinfectant are separate physical tanks; refill independently
         water_refill_status = 0
         if water_level_cm < 5.0:
             water_refill_status = 1
@@ -155,7 +181,7 @@ def generate_cubicle_data(cubicle_id, peak_prob, regular_prob, night_prob, num_d
 
         # 4. Hygiene score with noise
         raw_score = 100.0 - (mq135_gas_ppm * 0.12) - (hours_since_deep_clean * 1.8) - (entry_count * 0.4)
-        sensor_noise = np.random.normal(0, 8.0)  # FIX: nudged up from 4.5 so score isn't ~100% back-solvable
+        sensor_noise = np.random.normal(0, 8.0)
         hygiene_score = round(max(0.0, min(100.0, raw_score + sensor_noise)), 1)
 
         # Probabilistic (soft) label instead of a hard cutoff
@@ -180,6 +206,7 @@ def generate_cubicle_data(cubicle_id, peak_prob, regular_prob, night_prob, num_d
             'hours_since_deep_clean': round(hours_since_deep_clean, 2),
             'hygiene_score': hygiene_score,
             'needs_cleaning': needs_cleaning,
+            'room_available': room_available,
         })
 
     return rows
@@ -200,7 +227,7 @@ for cubicle_id, peak_p, regular_p, night_p in CUBICLES:
 
 df_all = pd.DataFrame(all_rows)
 
-csv_filename = 'washroom_dataset_multi_cubicle.csv'
+csv_filename = 'data/washroom_dataset_multi_cubicle.csv'
 df_all.to_csv(csv_filename, index=False)
 print(f"Success! Dataset created with {len(df_all)} rows, {df_all.cubicle_id.nunique()} cubicles, {len(df_all.columns)} columns.")
 
