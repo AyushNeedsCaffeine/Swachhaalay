@@ -29,6 +29,11 @@ ml/models/*.joblib
 ml/models/*.pkl
 ml/models/*.h5
 
+# Superseded Run A scratch (trained on old 17-col dataset before regeneration) -
+# ~246 MB of dead weight; metrics are captured in docs/TRAINING_LOG.md and the
+# canonical artifacts live in ml/models/ (also untracked by the rule above).
+ml/models_v1/
+
 # Logs & outputs
 logs/
 *.log
