@@ -37,8 +37,6 @@ ml/models_v1/
 # Logs & outputs
 logs/
 *.log
-outputs/
-figures/
 
 # Jupyter
 .ipynb_checkpoints/
